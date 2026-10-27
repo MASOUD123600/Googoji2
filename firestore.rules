@@ -1,0 +1,51 @@
+rules_version = '2';
+// قوانین امنیتی گوگوجی — در کنسول Firebase › Firestore › Rules کپی و Publish شود
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function isAdmin() {
+      return signedIn()
+        && request.auth.token.email == 'masood.malek225@gmail.com'
+        && request.auth.token.email_verified == true;
+    }
+    function changes() { return request.resource.data.diff(resource.data).affectedKeys(); }
+
+    match /products/{id} { allow read: if true; allow write: if isAdmin(); }
+    match /media/{id}    { allow read: if true; allow write: if isAdmin(); }
+    match /settings/{id} { allow read: if true; allow write: if isAdmin(); }
+    match /private/{id}  { allow read, write: if isAdmin(); }
+
+    match /coupons/{code} {
+      allow get: if signedIn();
+      allow list, write: if isAdmin();
+    }
+
+    match /referralCodes/{code} {
+      allow get: if true;
+      allow create: if signedIn() && request.resource.data.uid == request.auth.uid;
+      allow list, update, delete: if isAdmin();
+    }
+
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow create: if signedIn() && request.auth.uid == uid;
+      allow update: if isAdmin() || (signedIn() && request.auth.uid == uid
+        && !changes().hasAny(['referredBy', 'rewardCoupons', 'createdAt', 'referralCode']));
+      allow delete: if isAdmin();
+    }
+
+    match /orders/{id} {
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.status == 'در انتظار پرداخت';
+      allow read: if signedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      // مشتری فقط می‌تواند تا قبل از پرداخت، رسید کارت‌به‌کارت بفرستد یا روش پرداخت را عوض کند
+      allow update: if isAdmin() || (signedIn()
+        && resource.data.userId == request.auth.uid
+        && resource.data.status in ['در انتظار پرداخت', 'در انتظار تأیید رسید']
+        && request.resource.data.status in ['در انتظار پرداخت', 'در انتظار تأیید رسید']
+        && changes().hasOnly(['receipt', 'receiptAt', 'paymentMethod', 'status']));
+      allow delete: if isAdmin();
+    }
+  }
+}

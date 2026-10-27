@@ -1,0 +1,14 @@
+{
+  "name": "پت شاپ گوگوجی",
+  "short_name": "گوگوجی",
+  "lang": "fa",
+  "dir": "rtl",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FAF7FE",
+  "theme_color": "#5B2A86",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
