@@ -13,11 +13,32 @@ import { auth, db } from "../firebase";
 import { useApp } from "../store/AppContext";
 import { Seo, Spinner } from "../components/ui";
 import { isValidMobile, randomCode, storage, toEn } from "../lib/utils";
+import { ADMIN_ALIAS, ADMIN_EMAIL } from "../config";
+
+// نام کاربری: حروف انگلیسی کوچک، عدد، _ و نقطه؛ ۳ تا ۲۰ کاراکتر — در کالکشن usernames یکتا نگه داشته می‌شود
+export const normUsername = (u) => toEn(u).trim().toLowerCase();
+export const usernameProblem = (u) => {
+  if (!/^[a-z0-9_.]{3,20}$/.test(u)) return "نام کاربری فقط حروف انگلیسی، عدد، _ و نقطه (۳ تا ۲۰ کاراکتر)";
+  if (u === ADMIN_ALIAS.toLowerCase() || u === "admin") return "این نام کاربری رزرو شده است";
+  return null;
+};
+
+// ورودی «ایمیل یا نام کاربری» را به ایمیل تبدیل می‌کند
+export async function resolveLoginEmail(id) {
+  const v = toEn(id).trim();
+  if (v.includes("@")) return v;
+  const u = v.toLowerCase();
+  if (u === ADMIN_ALIAS.toLowerCase()) return ADMIN_EMAIL;
+  const snap = await getDoc(doc(db, "usernames", u)).catch(() => null);
+  if (!snap?.exists()) throw Object.assign(new Error("no user"), { code: "auth/user-not-found" });
+  return snap.data().email;
+}
 
 const ERR = {
   "auth/invalid-credential": "ایمیل یا رمز عبور اشتباه است",
   "auth/wrong-password": "ایمیل یا رمز عبور اشتباه است",
-  "auth/user-not-found": "حسابی با این ایمیل پیدا نشد",
+  "auth/user-not-found": "حسابی با این ایمیل یا نام کاربری پیدا نشد",
+  "auth/username-taken": "این نام کاربری قبلاً گرفته شده؛ یکی دیگر انتخاب کن",
   "auth/email-already-in-use": "این ایمیل قبلاً ثبت شده؛ وارد شو",
   "auth/invalid-email": "ایمیل معتبر نیست",
   "auth/weak-password": "رمز عبور باید حداقل ۶ کاراکتر باشد",
@@ -44,7 +65,7 @@ export function Login() {
   const [sp] = useSearchParams();
   const next = sp.get("next") || "/account";
   const nav = useNavigate();
-  const [email, setEmail] = useState("");
+  const [id, setId] = useState("");
   const [pass, setPass] = useState("");
   const [busy, setBusy] = useState(false);
   if (user) return <Navigate to={next} replace />;
@@ -53,7 +74,7 @@ export function Login() {
     e.preventDefault();
     setBusy(true);
     try {
-      await signInWithEmailAndPassword(auth, email.trim(), pass);
+      await signInWithEmailAndPassword(auth, await resolveLoginEmail(id), pass);
       notify("خوش اومدی! 👋");
       nav(next, { replace: true });
     } catch (err) {
@@ -66,7 +87,7 @@ export function Login() {
     <AuthShell icon="🐾" title="ورود به حساب" sub="خوشحالیم که دوباره می‌بینیمت!">
       <Seo title="ورود" noindex />
       <form onSubmit={submit} className="stack">
-        <label className="field"><span>ایمیل</span><input type="email" dir="ltr" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" required /></label>
+        <label className="field"><span>ایمیل یا نام کاربری</span><input dir="ltr" value={id} onChange={(e) => setId(e.target.value)} autoComplete="username" autoCapitalize="none" required /></label>
         <label className="field"><span>رمز عبور</span><input type="password" dir="ltr" value={pass} onChange={(e) => setPass(e.target.value)} autoComplete="current-password" required /></label>
         <button className="btn btn-p btn-block" disabled={busy}>{busy ? <Spinner /> : "ورود"}</button>
       </form>
@@ -83,7 +104,7 @@ export function Register() {
   const [sp] = useSearchParams();
   const next = sp.get("next") || "/account";
   const nav = useNavigate();
-  const [f, setF] = useState({ name: "", phone: "", email: "", pass: "", ref: sp.get("ref") || storage.get("ggj-ref", "") });
+  const [f, setF] = useState({ name: "", username: "", phone: "", email: "", pass: "", ref: sp.get("ref") || storage.get("ggj-ref", "") });
   const [busy, setBusy] = useState(false);
   if (user && !busy) return <Navigate to={next} replace />;
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
@@ -93,9 +114,21 @@ export function Register() {
     if (!f.name.trim()) return notify("نامت را وارد کن", "err");
     if (!isValidMobile(f.phone)) return notify("شماره موبایل معتبر نیست", "err");
     if (f.pass.length < 6) return notify("رمز عبور حداقل ۶ کاراکتر", "err");
+    const username = normUsername(f.username);
+    const uProblem = usernameProblem(username);
+    if (uProblem) return notify(uProblem, "err");
     setBusy(true);
     try {
+      const taken = await getDoc(doc(db, "usernames", username));
+      if (taken.exists()) throw { code: "auth/username-taken" };
       const cred = await createUserWithEmailAndPassword(auth, f.email.trim(), f.pass);
+      // ثبت نام کاربری یکتا؛ قوانین Firestore اجازه بازنویسی نام کاربری دیگران را نمی‌دهند
+      const savedUsername = await setDoc(doc(db, "usernames", username), { uid: cred.user.uid, email: cred.user.email })
+        .then(() => username)
+        .catch(() => {
+          notify("نام کاربری همزمان گرفته شد؛ از «اطلاعات حساب» یکی دیگر انتخاب کن", "err");
+          return "";
+        });
       await updateProfile(cred.user, { displayName: f.name.trim() }).catch(() => {});
       let referredBy = "";
       const refCode = toEn(f.ref).trim().toUpperCase();
@@ -108,6 +141,7 @@ export function Register() {
       await setDoc(doc(db, "referralCodes", referralCode), { uid: cred.user.uid, createdAt: serverTimestamp() });
       await setDoc(doc(db, "users", cred.user.uid), {
         name: f.name.trim(),
+        username: savedUsername,
         phone: toEn(f.phone).trim(),
         email: f.email.trim(),
         referralCode,
@@ -131,6 +165,7 @@ export function Register() {
       <Seo title="ثبت‌نام" noindex />
       <form onSubmit={submit} className="stack">
         <label className="field"><span>نام و نام خانوادگی</span><input value={f.name} onChange={set("name")} autoComplete="name" required /></label>
+        <label className="field"><span>نام کاربری (برای ورود؛ انگلیسی)</span><input dir="ltr" value={f.username} onChange={set("username")} placeholder="ali_pet" autoCapitalize="none" autoComplete="username" required /></label>
         <label className="field"><span>موبایل</span><input value={f.phone} onChange={set("phone")} inputMode="tel" placeholder="۰۹۱۲۱۲۳۴۵۶۷" autoComplete="tel" required /></label>
         <label className="field"><span>ایمیل</span><input type="email" dir="ltr" value={f.email} onChange={set("email")} autoComplete="email" required /></label>
         <label className="field"><span>رمز عبور</span><input type="password" dir="ltr" value={f.pass} onChange={set("pass")} autoComplete="new-password" placeholder="حداقل ۶ کاراکتر" required /></label>
@@ -149,7 +184,7 @@ export function ResetPassword() {
   const submit = async (e) => {
     e.preventDefault();
     try {
-      await sendPasswordResetEmail(auth, email.trim());
+      await sendPasswordResetEmail(auth, await resolveLoginEmail(email));
       setSent(true);
     } catch (err) {
       notify(authError(err), "err");
@@ -162,7 +197,7 @@ export function ResetPassword() {
         <div className="alert alert-ok">ایمیل بازیابی ارسال شد. پوشه Spam را هم چک کن.</div>
       ) : (
         <form onSubmit={submit} className="stack">
-          <label className="field"><span>ایمیل</span><input type="email" dir="ltr" value={email} onChange={(e) => setEmail(e.target.value)} required /></label>
+          <label className="field"><span>ایمیل یا نام کاربری</span><input dir="ltr" value={email} onChange={(e) => setEmail(e.target.value)} autoCapitalize="none" required /></label>
           <button className="btn btn-p btn-block">ارسال لینک بازیابی</button>
         </form>
       )}

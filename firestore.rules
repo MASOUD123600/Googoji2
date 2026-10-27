@@ -26,6 +26,17 @@ service cloud.firestore {
       allow list, update, delete: if isAdmin();
     }
 
+    // نام کاربری یکتا: هر نام فقط یک بار ساخته می‌شود و فقط صاحبش می‌تواند حذفش کند
+    match /usernames/{name} {
+      allow get: if true;
+      allow create: if signedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.email == request.auth.token.email
+        && name.matches('^[a-z0-9_.]{3,20}$');
+      allow delete: if signedIn() && (resource.data.uid == request.auth.uid || isAdmin());
+      allow list, update: if isAdmin();
+    }
+
     match /users/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
       allow create: if signedIn() && request.auth.uid == uid;

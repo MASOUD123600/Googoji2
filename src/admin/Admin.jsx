@@ -7,7 +7,7 @@ import { Bell, ExternalLink, LayoutDashboard, LogOut, Menu, Package, Receipt, Se
 import { auth, db } from "../firebase";
 import { useApp } from "../store/AppContext";
 import { Logo, Seo, Spinner } from "../components/ui";
-import { AuthShell, authError } from "../pages/Auth";
+import { AuthShell, authError, resolveLoginEmail } from "../pages/Auth";
 import { ADMIN_ALIAS, ADMIN_EMAIL } from "../config";
 import { beep, storage, toFa } from "../lib/utils";
 import Dashboard from "./Dashboard";
@@ -46,7 +46,7 @@ function AdminLogin() {
   const submit = async (e) => {
     e.preventDefault();
     setBusy(true);
-    const email = id.trim().toUpperCase() === ADMIN_ALIAS ? ADMIN_EMAIL : id.trim();
+    const email = await resolveLoginEmail(id).catch(() => id.trim());
     try {
       await signInWithEmailAndPassword(auth, email, pass);
       notify(`خوش اومدی ${ADMIN_ALIAS}! ⚙️`);

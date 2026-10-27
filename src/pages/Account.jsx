@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, Navigate, NavLink, Route, Routes } from "react-router-dom";
-import { collection, doc, onSnapshot, query, setDoc, where } from "firebase/firestore";
+import { collection, deleteDoc, doc, getDoc, onSnapshot, query, setDoc, where } from "firebase/firestore";
 import { sendEmailVerification, sendPasswordResetEmail } from "firebase/auth";
 import { Gift, Heart, Home, LogOut, MapPin, Package, Settings } from "lucide-react";
 import { auth, db } from "../firebase";
@@ -8,6 +8,7 @@ import { useApp } from "../store/AppContext";
 import { Empty, Seo, Spinner } from "../components/ui";
 import ProductCard from "../components/ProductCard";
 import { StatusBadge } from "./Order";
+import { normUsername, usernameProblem } from "./Auth";
 import { PAID_STATUSES, SITE_URL } from "../config";
 import { faDate, fmt, isValidMobile, toEn, toFa } from "../lib/utils";
 
@@ -143,10 +144,24 @@ function Profile() {
   const { profile, user, notify } = useApp();
   const [name, setName] = useState(profile?.name || "");
   const [phone, setPhone] = useState(profile?.phone || "");
+  const [username, setUsername] = useState(profile?.username || "");
   const save = async (e) => {
     e.preventDefault();
     if (!isValidMobile(phone)) return notify("شماره موبایل معتبر نیست", "err");
-    await setDoc(doc(db, "users", user.uid), { name: name.trim(), phone: toEn(phone).trim(), email: user.email }, { merge: true });
+    const u = normUsername(username);
+    const old = profile?.username || "";
+    if (u && u !== old) {
+      const problem = usernameProblem(u);
+      if (problem) return notify(problem, "err");
+      if ((await getDoc(doc(db, "usernames", u))).exists()) return notify("این نام کاربری قبلاً گرفته شده", "err");
+      try {
+        await setDoc(doc(db, "usernames", u), { uid: user.uid, email: user.email });
+      } catch {
+        return notify("ثبت نام کاربری ناموفق بود", "err");
+      }
+      if (old) await deleteDoc(doc(db, "usernames", old)).catch(() => {});
+    }
+    await setDoc(doc(db, "users", user.uid), { name: name.trim(), phone: toEn(phone).trim(), email: user.email, username: u || old }, { merge: true });
     notify("اطلاعات ذخیره شد");
   };
   return (
@@ -155,7 +170,8 @@ function Profile() {
       <form className="form-grid" onSubmit={save}>
         <label className="field"><span>نام</span><input value={name} onChange={(e) => setName(e.target.value)} /></label>
         <label className="field"><span>موبایل</span><input value={phone} onChange={(e) => setPhone(e.target.value)} /></label>
-        <label className="field full"><span>ایمیل</span><input value={user.email} dir="ltr" disabled /></label>
+        <label className="field"><span>نام کاربری (برای ورود)</span><input dir="ltr" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="ali_pet" autoCapitalize="none" /></label>
+        <label className="field"><span>ایمیل</span><input value={user.email} dir="ltr" disabled /></label>
         <div className="full row-gap">
           <button className="btn btn-p">ذخیره</button>
           <button type="button" className="btn btn-ghost" onClick={() => sendPasswordResetEmail(auth, user.email).then(() => notify("لینک تغییر رمز به ایمیلت ارسال شد"))}>تغییر رمز عبور</button>
