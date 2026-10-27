@@ -79,7 +79,7 @@ export default function Product() {
     ...(priced && {
       offers: {
         "@type": "Offer",
-        url: SITE_URL + url,
+        url: `${SITE_URL}${url}/`,
         priceCurrency: "IRR",
         price: Number(p.price) * 10,
         availability: out ? "https://schema.org/OutOfStock" : "https://schema.org/InStock",
@@ -96,7 +96,7 @@ export default function Product() {
 
   return (
     <div className="container section">
-      <Seo title={p.name} description={`${p.desc} | خرید ${p.name} از پت شاپ گوگوجی با ضمانت اصالت و ارسال رایگان در تهران.`} path={url} image={absImg} jsonLd={jsonLd} />
+      <Seo title={p.name} description={`${p.desc} | خرید ${p.name} از پت شاپ گوگوجی با ضمانت اصالت و ارسال رایگان در تهران.`} path={`${url}/`} image={absImg} jsonLd={jsonLd} />
       <nav className="crumbs">
         <Link to="/">خانه</Link> / <Link to="/shop">فروشگاه</Link> / <Link to={`/shop?cat=${encodeURIComponent(p.category)}`}>{p.category}</Link> / <span>{p.name}</span>
       </nav>

@@ -56,6 +56,8 @@ function page(template, { title, description, path, image, jsonLd, body }) {
 }
 
 const template = await readFile(join(DIST, "index.html"), "utf8");
+// نسخه خالی برای مسیرهای SPA (پنل، سبد و ...) — netlify.toml به این فایل redirect می‌کند
+await writeFile(join(DIST, "app.html"), template);
 const products = (await loadProducts()).filter((p) => p.active !== false);
 const urls = ["/", "/shop", "/about", "/contact", "/faq", "/terms", "/privacy"];
 
@@ -76,7 +78,7 @@ for (const p of products) {
     ...(priced && {
       offers: {
         "@type": "Offer",
-        url: `${SITE}/p/${slug}`,
+        url: `${SITE}/p/${slug}/`,
         priceCurrency: "IRR",
         price: Number(p.price) * 10,
         availability: Number(p.stock) > 0 ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
@@ -86,8 +88,8 @@ for (const p of products) {
   const body = `<h1>${esc(p.name)}</h1>${image ? `<img src="${image}" alt="${esc(p.name)}" width="400">` : ""}<p>${esc(p.desc)}</p><ul>${(p.features || []).map((f) => `<li>${esc(f)}</li>`).join("")}</ul>${priced ? `<p>قیمت: ${Number(p.price).toLocaleString("fa-IR")} تومان</p>` : ""}<p><a href="/shop">فروشگاه گوگوجی</a> — ${esc(p.category)}</p>`;
   const dir = join(DIST, "p", slug);
   await mkdir(dir, { recursive: true });
-  await writeFile(join(dir, "index.html"), page(template, { title: p.name, description: `${p.desc} خرید از پت شاپ گوگوجی با ارسال رایگان در تهران.`.slice(0, 300), path: `/p/${slug}`, image, jsonLd, body }));
-  urls.push(`/p/${slug}`);
+  await writeFile(join(dir, "index.html"), page(template, { title: p.name, description: `${p.desc} خرید از پت شاپ گوگوجی با ارسال رایگان در تهران.`.slice(0, 300), path: `/p/${slug}/`, image, jsonLd, body }));
+  urls.push(`/p/${slug}/`);
 }
 
 // صفحه فروشگاه با فهرست لینک همه محصولات
@@ -101,6 +103,23 @@ await writeFile(
     body: `<h1>فروشگاه پت شاپ گوگوجی</h1><ul>${products.map((p) => `<li><a href="/p/${p.slug || p.id}">${esc(p.name)}</a></li>`).join("")}</ul>`,
   }),
 );
+
+// صفحه اصلی با محتوای واقعی برای گوگل و دستیارهای هوش مصنوعی (به‌جای صفحه خالی)
+const cats = [...new Set(products.map((p) => p.category).filter(Boolean))];
+const home = page(template, {
+  title: "خرید غذا، تشویقی و لوازم سگ و گربه در تهران",
+  description: "پت شاپ گوگوجی؛ فروشگاه حضوری و آنلاین غذای خشک و مرطوب، تشویقی، مکمل، شیرخشک، اسباب‌بازی و لوازم سگ و گربه با برندهای اصل و ارسال رایگان به سراسر تهران.",
+  path: "/",
+  image: "/brand/store-poster.webp",
+  body: `<h1>پت شاپ گوگوجی — همه ملزومات حیوانات خانگی</h1>
+<p>پت شاپ گوگوجی (Googoji Pet) فروشگاه حضوری و آنلاین غذا، تشویقی، مکمل، شیرخشک، اسباب‌بازی، لباس و لوازم سگ و گربه در تهران است. همه محصولات اصل و تاریخ‌دار هستند و ارسال به سراسر تهران رایگان است.</p>
+<p><b>آدرس:</b> تهران، تهرانپارس، قنات کوثر، بلوار مطهری، نبش کوچه دهم مرکزی، پلاک ۱۰۶ و ۴ — <b>تلفن:</b> ۰۹۱۲۴۸۹۰۴۳۲ و ۰۹۱۰۱۹۶۲۳۸۴ — <b>اینستاگرام:</b> googojipet</p>
+<p>برندها: جوسرا، جوسی کت، یوروپت، ویسکاس، فلیکس، بیفار، شایر، دکتر کلادرز، ونپی، نوبی، ریلکس پلاس، نرانو، زاریکس.</p>
+<h2>دسته‌بندی‌ها</h2><ul>${cats.map((c) => `<li><a href="/shop?cat=${encodeURIComponent(c)}">${esc(c)}</a></li>`).join("")}</ul>
+<h2>محصولات</h2><ul>${products.map((p) => `<li><a href="/p/${p.slug || p.id}/">${esc(p.name)}</a></li>`).join("")}</ul>
+<p><a href="/about">درباره ما</a> · <a href="/contact">تماس با ما</a> · <a href="/faq">سؤالات متداول</a></p>`,
+}).replace(/<title>[\s\S]*?<\/title>/, "<title>پت شاپ گوگوجی | خرید غذا، تشویقی و لوازم سگ و گربه در تهران</title>");
+await writeFile(join(DIST, "index.html"), home);
 
 const today = new Date().toISOString().slice(0, 10);
 await writeFile(

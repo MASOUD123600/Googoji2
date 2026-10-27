@@ -13,7 +13,7 @@
 # صفحات SPA (فایل‌های ساخته‌شده در dist مثل /p/slug اولویت دارند)
 [[redirects]]
   from = "/*"
-  to = "/index.html"
+  to = "/app.html"
   status = 200
 
 [[headers]]
